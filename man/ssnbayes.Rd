@@ -2,7 +2,7 @@
 % Please edit documentation in R/all_func.R
 \name{ssnbayes}
 \alias{ssnbayes}
-\title{Fits a mixed regression model using Stan}
+\title{Fits a mixed linear regression model using Stan}
 \usage{
 ssnbayes(
   formula = formula,
@@ -23,9 +23,10 @@ ssnbayes(
 \arguments{
 \item{formula}{A formula as in lm()}
 
-\item{data}{A long data frame containing the locations, dates, covariates and the response variable. It has to have the locID and date. No missing values are allowed in the covariates.}
+\item{data}{A long data frame containing the locations, dates, covariates and the response variable. It has to have the locID and date. No missing values are allowed in the covariates.
+The order in this data.fame MUST be: spatial locations (1 to S) at time t=1, then locations (1 to S) at t=2 and so on.}
 
-\item{path}{Path with the name of the SSN object}
+\item{path}{Path with the name of the SpatialStreamNetwork object}
 
 \item{time_method}{A list specifying the temporal structure (ar = Autorregressive; var = Vector autorregression) and coumn in the data with the time variable.}
 
@@ -49,6 +50,8 @@ ssnbayes(
 }
 \value{
 A list with the model fit
+
+It returns a ssnbayes object (similar to stan returns). It includes the formula used to fit the model. The output can be transformed into the stanfit class using class(fits) <- c("stanfit").
 }
 \description{
 It requires the same number of observation/locations per day.
@@ -59,6 +62,9 @@ Missing values are allowed in the response but not in the covariates.
 }
 \details{
 Missing values are not allowed in the covariates and they must be imputed before using ssnbayes(). Many options can be found in https://cran.r-project.org/web/views/MissingData.html
+The pid in the data has to be consecutive from 1 to the number of observations.
+Users can use the SpatialStreamNetwork created with the SSN package. This will provide the spatial stream information used to compute covariance matrices. If that is the case, the data has
+to have point ids (pid) matching the ones in SSN distance matrices, so that a mapping can occur.
 }
 \examples{
 \dontrun{
@@ -68,7 +74,7 @@ Missing values are not allowed in the covariates and they must be imputed before
 #n <- importSSN(path, predpts = "preds", o.write = TRUE)
 ## Imports a data.frame containing observations and covariates
 #clear <- readRDS(system.file("extdata/clear_obs.RDS", package = "SSNbayes"))
-#fit_ar <- ssnbayes(formula = y ~ SLOPE + elev + cumdrainag + air_temp + sin + cos,
+#fit_ar <- ssnbayes(formula = y ~ SLOPE + elev + h2o_area + air_temp + sin + cos,
 #                   data = clear,
 #                   path = path,
 #                   time_method = list("ar", "date"),

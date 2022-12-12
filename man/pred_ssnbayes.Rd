@@ -2,7 +2,7 @@
 % Please edit documentation in R/all_func.R
 \name{pred_ssnbayes}
 \alias{pred_ssnbayes}
-\title{Internal function used to perform spatial prediction in R using a stanfit object from ssnbayes()}
+\title{Internal function used to perform spatio-temporal prediction in R using a stanfit object from ssnbayes()}
 \usage{
 pred_ssnbayes(
   object = object,
@@ -20,7 +20,7 @@ pred_ssnbayes(
 \arguments{
 \item{object}{A stanfit object returned from ssnbayes}
 
-\item{path}{Path with the name of the SSN object}
+\item{path}{Path with the name of the SpatialStreamNetwork object}
 
 \item{obs_data}{The observed data frame}
 

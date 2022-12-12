@@ -2,36 +2,38 @@
 #   Check Package:             'Ctrl + Shift + E'
 #   Test Package:              'Ctrl + Shift + T'
 
-#' Collapses a SSN object into a data frame
+#' Collapses a SpatialStreamNetwork object into a data frame
 #'
-#' @param t Path to a SSN object
-#' @param par A spatial parameter
-#' @return A data frame
+#' @param ssn An S4 SpatialStreamNetwork object created with SSN package.
+#' @param par A spatial parameter such as the computed_afv (additive function value).
+#' @return A data frame with the lat and long of the line segments in the network. The column line_id refers to the ID of the line.
 #' @importFrom dplyr arrange
 #' @importFrom plyr .
 #' @export
+#' @details The parameters (par) has to be present in the observed data frame via getSSNdata.frame(ssn, Name = "Obs"). More details of the argument par can be found in the SSN::additive.function().
 #' @examples
 #' \donttest{
 #' require("SSN")
 #' path <- system.file("extdata/clearwater.ssn", package = "SSNbayes")
-#' n <- importSSN(path, predpts = "preds", o.write = TRUE)
-#' t.df <- collapse(n)}
+#' ssn <- importSSN(path, predpts = "preds", o.write = TRUE)
+#' t.df <- collapse(ssn, par = 'afvArea')}
 
 
-collapse <- function(t, par = 'afvArea'){
+collapse <- function(ssn, par = 'afvArea'){
   slot <- NULL
   df_all <- NULL
-  for (i in 1:length(t@lines)){
-    df <- data.frame(t@lines[[i]]@Lines[[1]]@coords)
-    df$slot <- t@lines[[i]]@ID
+  line_id <- NULL
+  for (i in 1:length(ssn@lines)){
+    df <- data.frame(ssn@lines[[i]]@Lines[[1]]@coords)
+    df$slot <- ssn@lines[[i]]@ID
+    df$computed_afv <- ssn@data[i, par]
 
-    df$computed_afv <- t@data[i, par]  # t@data$afvArea[i] #afvArea
-
-	df_all<- rbind(df, df_all)
-
-    df_all$slot <- as.numeric(as.character(df_all$slot))
-  }
-  df_all <-  dplyr::arrange(df_all, slot)
+    df$line_id <- as.numeric(as.character(df$slot))
+    df_all<- rbind(df, df_all)
+    }
+  df_all <-  dplyr::arrange(df_all, line_id)
+  #df_all$slot <- NULL
+  names(df_all)[names(df_all) == 'computed_afv'] <- par
   df_all
 }
 
@@ -39,7 +41,7 @@ collapse <- function(t, par = 'afvArea'){
 
 
 
-#' Creates a list of distances and weights
+#' Creates a list containing the stream distances and weights
 #'
 #' @param path Path to the files
 #' @param net (optional) A network from the SSN object
@@ -54,10 +56,10 @@ collapse <- function(t, par = 'afvArea'){
 #' @examples
 #' \donttest{
 #' path <- system.file("extdata/clearwater.ssn", package = "SSNbayes")
-#' mat_all <- dist_wei_mat(path, net = 2, addfunccol='afvArea')
+#' mat_all <- dist_weight_mat(path, net = 2, addfunccol='afvArea')
 #' }
 
-dist_wei_mat <- function(path = path, net = 1, addfunccol='addfunccol'){
+dist_weight_mat <- function(path = path, net = 1, addfunccol='addfunccol'){
   pid <- NULL
   n  <- importSSN(path, o.write = TRUE)
   obs_data <- getSSNdata.frame(n, "Obs")
@@ -115,8 +117,8 @@ dist_wei_mat <- function(path = path, net = 1, addfunccol='addfunccol'){
 
 #' Creates a list of distances and weights between observed and prediction sites
 #'
-#' @param path Path with the name of the SSN object
-#' @param net (optional) A network from the SSN object
+#' @param path Path with the name of the SpatialStreamNetwork object
+#' @param net (optional) A network from the SpatialStreamNetwork object
 #' @param addfunccol (optional) A parameter to compute the spatial weights
 #' @return A list of matrices
 #' @importFrom dplyr mutate %>% distinct left_join case_when
@@ -129,10 +131,10 @@ dist_wei_mat <- function(path = path, net = 1, addfunccol='addfunccol'){
 #' @examples
 #' \donttest{
 #' path <- system.file("extdata/clearwater.ssn", package = "SSNbayes")
-#' mat_all_pred <- dist_wei_mat_preds(path, net = 2, addfunccol='afvArea')}
+#' mat_all_pred <- dist_weight_mat_preds(path, net = 2, addfunccol='afvArea')}
 
 
-dist_wei_mat_preds <- function(path = path, net = 1, addfunccol = 'addfunccol'){
+dist_weight_mat_preds <- function(path = path, net = 1, addfunccol = 'addfunccol'){
   netID <- NULL
   locID <- NULL
   pid <- NULL
@@ -262,10 +264,39 @@ mylm <- function(formula, data) {
   return(list(y = y, X = X))
 }
 
+#' A simple modeling function using a formula and data
+#'
+#' @param formula A formula as in lm()
+#' @param data A data.frame containing the elements specified in the formula
+#' @return A list of matrices
+#' @importFrom stats model.matrix model.response
+#' @export
+#' @author Jay ver Hoef
+#' @examples
+#' options(na.action='na.pass')
+#' data("iris")
+#' out_list = mylm(formula = Petal.Length ~ Sepal.Length + Sepal.Width, data = iris)
+
+
+mylm <- function(formula, data) {
+  # get response as a vector
+  mf <- match.call(expand.dots = FALSE)
+  m <- match(c("formula", "data"), names(mf), 0L)
+  mf <- mf[c(1L, m)]
+  mf$drop.unused.levels <- TRUE
+  mf[[1L]] <- as.name("model.frame")
+  mf <- eval(mf, parent.frame())
+  y <- as.vector(model.response(mf, "numeric"))
+  # create design matrix
+  X <- model.matrix(formula, data)
+  # return a list of response vector and design matrix
+  return(list(y = y, X = X))
+}
 
 
 
-#' Fits a mixed regression model using Stan
+
+#' Fits a mixed linear regression model using Stan
 #'
 #' It requires the same number of observation/locations per day.
 #' It requires location id (locID) and points id (pid).
@@ -273,9 +304,10 @@ mylm <- function(formula, data) {
 #' The pid is unique for each observation.
 #' Missing values are allowed in the response but not in the covariates.
 #'
-#' @param path Path with the name of the SSN object
+#' @param path Path with the name of the SpatialStreamNetwork object
 #' @param formula A formula as in lm()
 #' @param data A long data frame containing the locations, dates, covariates and the response variable. It has to have the locID and date. No missing values are allowed in the covariates.
+#' The order in this data.fame MUST be: spatial locations (1 to S) at time t=1, then locations (1 to S) at t=2 and so on.
 #' @param space_method A list defining if use or not of an SSN object and the spatial correlation structure. The second element is the spatial covariance structure. A 3rd element is a list with the lon and lat for Euclidean distance models.
 #' @param time_method A list specifying the temporal structure (ar = Autorregressive; var = Vector autorregression) and coumn in the data with the time variable.
 #' @param iter Number of iterations
@@ -288,6 +320,10 @@ mylm <- function(formula, data) {
 #' @param seed (optional) A seed for reproducibility
 #' @return A list with the model fit
 #' @details Missing values are not allowed in the covariates and they must be imputed before using ssnbayes(). Many options can be found in https://cran.r-project.org/web/views/MissingData.html
+#' The pid in the data has to be consecutive from 1 to the number of observations.
+#' Users can use the SpatialStreamNetwork created with the SSN package. This will provide the spatial stream information used to compute covariance matrices. If that is the case, the data has
+#' to have point ids (pid) matching the ones in SSN distance matrices, so that a mapping can occur.
+#' @return It returns a ssnbayes object (similar to stan returns). It includes the formula used to fit the model. The output can be transformed into the stanfit class using class(fits) <- c("stanfit").
 #' @export
 #' @importFrom dplyr mutate %>% distinct left_join case_when
 #' @importFrom plyr .
@@ -303,7 +339,7 @@ mylm <- function(formula, data) {
 #'#n <- importSSN(path, predpts = "preds", o.write = TRUE)
 #'## Imports a data.frame containing observations and covariates
 #'#clear <- readRDS(system.file("extdata/clear_obs.RDS", package = "SSNbayes"))
-#'#fit_ar <- ssnbayes(formula = y ~ SLOPE + elev + cumdrainag + air_temp + sin + cos,
+#'#fit_ar <- ssnbayes(formula = y ~ SLOPE + elev + h2o_area + air_temp + sin + cos,
 #'#                   data = clear,
 #'#                   path = path,
 #'#                   time_method = list("ar", "date"),
@@ -372,8 +408,8 @@ ssnbayes <- function(formula = formula,
       print('no SSN object defined')
       ssn_object <- FALSE
       if(space_method[[2]] %in% c("Exponential.Euclid") == FALSE) {stop("Need to specify Exponential.Euclid")}
-      # when using Euclidean distance, need to specify the columns with long and lat.
-      if(length(space_method) < 3){ stop("Please, specify the columns in the data frame with the latitude and longitude (c('lon', 'lat'))") }
+      # when using Euclidean distance, need to specify the columns with lon and lat.
+      if(length(space_method) < 3){ stop("Please, specify the columns in the data frame with the longitude and latitude (c('lon', 'lat'))") }
 
       data$lon <- data[,names(data) == space_method[[3]][1]]
       data$lat <- data[,names(data) == space_method[[3]][2]]
@@ -822,7 +858,7 @@ ssnbayes <- function(formula = formula,
   i_y_mis <- obs_data[is.na(obs_data$y),]$pid
 
   if(ssn_object == TRUE){ # the ssn object exist?
-    mat_all <- dist_wei_mat(path = path, net = net, addfunccol = addfunccol)
+    mat_all <- dist_weight_mat(path = path, net = net, addfunccol = addfunccol)
   }
 
   if(ssn_object == FALSE){ # the ssn object does not exist- purely spatial
@@ -891,7 +927,7 @@ ssnbayes <- function(formula = formula,
 
 
 
-#' Performs spatial prediction in R using an ssnbayes object from a fitted model.
+#' Performs spatio-temporal prediction in R using an ssnbayes object from a fitted model.
 #'
 #' It will take an observed and a prediction data frame.
 #' It requires the same number of observation/locations per day.
@@ -902,7 +938,7 @@ ssnbayes <- function(formula = formula,
 #'
 #' @param object A stanfit object returned from ssnbayes
 #' @param ... Other parameters
-#' @param path Path with the name of the SSN object
+#' @param path Path with the name of the SpatialStreamNetwork object
 #' @param obs_data The observed data frame
 #' @param pred_data The predicted data frame
 #' @param net (optional) Network from the SSN object
@@ -911,7 +947,9 @@ ssnbayes <- function(formula = formula,
 #' @param chunk_size (optional) the number of locID to make prediction from
 #' @param locID_pred (optional) the location id for the predictions. Used when the number of pred locations is large.
 #' @param seed (optional) A seed for reproducibility
-#' @return A data frame
+#' @return A data frame with the location (locID), time point (date), plus the MCMC draws from the posterior from 1 to the number of iterations.
+#' The locID0 column is an internal consecutive location ID (locID) produced in the predictions, starting at max(locID(observed data)) + 1. It is used internally in the way predictions are made in chunks.
+#' @details The returned data frame is melted to produce a long dataset. See examples.
 #' @export
 #' @importFrom dplyr mutate %>% distinct left_join case_when
 #' @importFrom plyr .
@@ -946,6 +984,13 @@ predict.ssnbayes <- function(object = object,
                              locID_pred = locID_pred,
                              chunk_size = chunk_size,
                              seed = seed) {
+
+  stanfit <- object
+  formula <- as.formula(attributes(stanfit)$formula)
+  obs_resp <- obs_data[,gsub("\\~.*", "", formula)[2]]
+  if( any( is.na(obs_resp) )) {stop("Can't have missing values in the response in the observed data. You need to impute them before")}
+
+
   out <- pred_ssnbayes(object = object,
                        path = path,
                        obs_data = obs_data,
@@ -962,7 +1007,7 @@ predict.ssnbayes <- function(object = object,
 
 
 
-#' Internal function used to perform spatial prediction in R using a stanfit object from ssnbayes()
+#' Internal function used to perform spatio-temporal prediction in R using a stanfit object from ssnbayes()
 #'
 #' Use predict.ssnbayes() instead.
 #' It will take an observed and a prediction data frame.
@@ -1028,7 +1073,7 @@ krig <- function(object = object,
 
   pred_data$temp <- NA
 
-  locID_pred <- sort(unique(pred_data$locID)) #6422
+  locID_pred <- sort(unique(pred_data$locID))
 
   pred_data$locID0 <- as.numeric(factor(pred_data$locID)) # conseq locID
   pred_data$locID0 <- pred_data$locID0 + length(locID_obs) # adding numb of locID in obs dataset
@@ -1134,7 +1179,7 @@ krig <- function(object = object,
 
 
 
-#' Internal function used to perform spatial prediction in R using a stanfit object from ssnbayes()
+#' Internal function used to perform spatio-temporal prediction in R using a stanfit object from ssnbayes()
 #'
 #' Use predict.ssnbayes() instead.
 #' It will take an observed and a prediction data frame.
@@ -1145,7 +1190,7 @@ krig <- function(object = object,
 #' Missing values are allowed in the response but not in the covariates.
 #'
 #' @param object A stanfit object returned from ssnbayes
-#' @param path Path with the name of the SSN object
+#' @param path Path with the name of the SpatialStreamNetwork object
 #' @param obs_data The observed data frame
 #' @param pred_data The predicted data frame
 #' @param net (optional) Network from the SSN object
@@ -1192,7 +1237,7 @@ pred_ssnbayes <- function(
   set.seed(seed)
 
 
-  mat_all_preds <- dist_wei_mat_preds(path = path,
+  mat_all_preds <- dist_weight_mat_preds(path = path,
                                       net = net,
                                       addfunccol = addfunccol)
 
@@ -1233,7 +1278,7 @@ pred_ssnbayes <- function(
                 chunk_size = chunk_size,
                 obs_data = obs_data,
                 pred_data = pred_data,
-                net = 2)
+                net = net)
 
     out_all <- rbind(out_all, out)
   }

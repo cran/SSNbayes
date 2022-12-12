@@ -2,7 +2,7 @@
 % Please edit documentation in R/all_func.R
 \name{predict.ssnbayes}
 \alias{predict.ssnbayes}
-\title{Performs spatial prediction in R using an ssnbayes object from a fitted model.}
+\title{Performs spatio-temporal prediction in R using an ssnbayes object from a fitted model.}
 \usage{
 \method{predict}{ssnbayes}(
   object = object,
@@ -23,7 +23,7 @@
 
 \item{...}{Other parameters}
 
-\item{path}{Path with the name of the SSN object}
+\item{path}{Path with the name of the SpatialStreamNetwork object}
 
 \item{obs_data}{The observed data frame}
 
@@ -42,7 +42,8 @@
 \item{seed}{(optional) A seed for reproducibility}
 }
 \value{
-A data frame
+A data frame with the location (locID), time point (date), plus the MCMC draws from the posterior from 1 to the number of iterations.
+The locID0 column is an internal consecutive location ID (locID) produced in the predictions, starting at max(locID(observed data)) + 1. It is used internally in the way predictions are made in chunks.
 }
 \description{
 It will take an observed and a prediction data frame.
@@ -51,6 +52,9 @@ It requires location id (locID) and points id (pid).
 The locID are unique for each site.
 The pid is unique for each observation.
 Missing values are allowed in the response but not in the covariates.
+}
+\details{
+The returned data frame is melted to produce a long dataset. See examples.
 }
 \examples{
 \donttest{
